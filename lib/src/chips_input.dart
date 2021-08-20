@@ -13,18 +13,8 @@ typedef ChipSelected<T> = void Function(T data, bool selected);
 typedef ChipsBuilder<T> = Widget Function(
     BuildContext context, ChipsInputState<T> state, T data);
 
-const kObjectReplacementChar = 0xFFFD;
-
 extension on TextEditingValue {
-  String get normalCharactersText => String.fromCharCodes(
-        text.codeUnits.where((ch) => ch != kObjectReplacementChar),
-      );
-
-  List<int> get replacementCharacters => text.codeUnits
-      .where((ch) => ch == kObjectReplacementChar)
-      .toList(growable: false);
-
-  int get replacementCharactersCount => replacementCharacters.length;
+  String get normalCharactersText => text;
 }
 
 class ChipsInput<T> extends StatefulWidget {
@@ -325,32 +315,18 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
       setState(() {
         _value = value;
       });
-      if (value.replacementCharactersCount <
-          _oldTextEditingValue.replacementCharactersCount) {
-        final removedChip = _chips.last;
-        _chips = Set.of(_chips.take(value.replacementCharactersCount));
-        widget.onChanged(_chips.toList(growable: false));
-        var putText = '';
-        if (widget.allowChipEditing && _enteredTexts.containsKey(removedChip)) {
-          putText = _enteredTexts[removedChip]!;
-          _enteredTexts.remove(removedChip);
-        }
-        _updateTextInputState(putText: putText);
-      } else {
-        _updateTextInputState();
-      }
+
+      _updateTextInputState();
       _onSearchChanged(_value.normalCharactersText);
     }
   }
 
   void _updateTextInputState({bool replaceText = false, String putText = ''}) {
     final updatedText =
-        String.fromCharCodes(_chips.map((_) => kObjectReplacementChar)) +
-            "${replaceText ? '' : _value.normalCharactersText}" +
-            putText;
+        "${replaceText ? '' : _value.normalCharactersText}" + putText;
     setState(() {
       final textLength = updatedText.characters.length;
-      final replacedLength = _chips.length;
+      final replacedLength = 0; //_chips.length;
       _value = _value.copyWith(
         text: updatedText,
         selection: TextSelection.collapsed(offset: textLength),
@@ -449,38 +425,59 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
       ),
     );
 
-    return NotificationListener<SizeChangedLayoutNotification>(
-      onNotification: (SizeChangedLayoutNotification val) {
-        WidgetsBinding.instance?.addPostFrameCallback((_) async {
-          _suggestionsBoxController.overlayEntry?.markNeedsBuild();
-        });
-        return true;
+    return RawKeyboardListener(
+      focusNode: _focusNode,
+      autofocus: widget.autofocus,
+      onKey: (event) {
+        if (event.runtimeType.toString() == 'RawKeyDownEvent' &&
+            event.logicalKey == LogicalKeyboardKey.backspace) {
+          if (_chips.isNotEmpty) {
+            final removedChip = _chips.last;
+            _chips = Set.of(_chips.take(_chips.length - 1));
+            widget.onChanged(_chips.toList(growable: false));
+            var putText = '';
+            if (widget.allowChipEditing &&
+                _enteredTexts.containsKey(removedChip)) {
+              putText = _enteredTexts[removedChip]!;
+              _enteredTexts.remove(removedChip);
+            }
+            _updateTextInputState(putText: putText);
+          }
+        }
       },
-      child: SizeChangedLayoutNotifier(
-        child: Column(
-          children: <Widget>[
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                requestKeyboard();
-              },
-              child: InputDecorator(
-                decoration: widget.decoration,
-                isFocused: _focusNode.hasFocus,
-                isEmpty: _value.text.isEmpty && _chips.isEmpty,
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 4.0,
-                  runSpacing: 4.0,
-                  children: chipsChildren,
+      child: NotificationListener<SizeChangedLayoutNotification>(
+        onNotification: (SizeChangedLayoutNotification val) {
+          WidgetsBinding.instance?.addPostFrameCallback((_) async {
+            _suggestionsBoxController.overlayEntry?.markNeedsBuild();
+          });
+          return true;
+        },
+        child: SizeChangedLayoutNotifier(
+          child: Column(
+            children: <Widget>[
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  requestKeyboard();
+                },
+                child: InputDecorator(
+                  decoration: widget.decoration,
+                  isFocused: _focusNode.hasFocus,
+                  isEmpty: _value.text.isEmpty && _chips.isEmpty,
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4.0,
+                    runSpacing: 4.0,
+                    children: chipsChildren,
+                  ),
                 ),
               ),
-            ),
-            CompositedTransformTarget(
-              link: _layerLink,
-              child: Container(),
-            ),
-          ],
+              CompositedTransformTarget(
+                link: _layerLink,
+                child: Container(),
+              ),
+            ],
+          ),
         ),
       ),
     );
