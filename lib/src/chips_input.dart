@@ -13,20 +13,6 @@ typedef ChipSelected<T> = void Function(T data, bool selected);
 typedef ChipsBuilder<T> = Widget Function(
     BuildContext context, ChipsInputState<T> state, T data);
 
-const kObjectReplacementChar = 0xFFFD;
-
-extension on TextEditingValue {
-  String get normalCharactersText => String.fromCharCodes(
-        text.codeUnits.where((ch) => ch != kObjectReplacementChar),
-      );
-
-  List<int> get replacementCharacters => text.codeUnits
-      .where((ch) => ch == kObjectReplacementChar)
-      .toList(growable: false);
-
-  int get replacementCharactersCount => replacementCharacters.length;
-}
-
 class ChipsInput<T> extends StatefulWidget {
   const ChipsInput({
     Key? key,
@@ -200,7 +186,6 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
               min(_suggestionBoxHeight, widget.suggestionsBoxMaxHeight!);
         }
         final showTop = topAvailableSpace > bottomAvailableSpace;
-        // print("showTop: $showTop" );
         final compositedTransformFollowerOffset =
             showTop ? Offset(0, -size.height) : Offset.zero;
 
@@ -255,7 +240,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
     if (!_hasReachedMaxChips) {
       _chips.add(data);
       if (widget.allowChipEditing) {
-        final enteredText = _value.normalCharactersText;
+        final enteredText = _value.text;
         if (enteredText.isNotEmpty) _enteredTexts[data] = enteredText;
       }
       _updateTextInputState(replaceText: true);
@@ -282,7 +267,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
     if (!_hasInputConnection) {
       _textInputConnection = TextInput.attach(this, textInputConfiguration);
       _textInputConnection!.show();
-      _updateTextInputState();
+      _textInputConnection!.setEditingState(_value);
     } else {
       _textInputConnection?.show();
     }
@@ -318,47 +303,23 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
 
   @override
   void updateEditingValue(TextEditingValue value) {
-    //print("updateEditingValue FIRED with ${value.text}");
-    // _receivedRemoteTextEditingValue = value;
-    final _oldTextEditingValue = _value;
-    if (value.text != _oldTextEditingValue.text) {
-      setState(() {
-        _value = value;
-      });
-      if (value.replacementCharactersCount <
-          _oldTextEditingValue.replacementCharactersCount) {
-        final removedChip = _chips.last;
-        _chips = Set.of(_chips.take(value.replacementCharactersCount));
-        widget.onChanged(_chips.toList(growable: false));
-        var putText = '';
-        if (widget.allowChipEditing && _enteredTexts.containsKey(removedChip)) {
-          putText = _enteredTexts[removedChip]!;
-          _enteredTexts.remove(removedChip);
-        }
-        _updateTextInputState(putText: putText);
-      } else {
-        _updateTextInputState();
-      }
-      _onSearchChanged(_value.normalCharactersText);
-    }
+    setState(() {
+      _value = value;
+    });
+    _onSearchChanged(_value.text);
   }
 
   void _updateTextInputState({bool replaceText = false, String putText = ''}) {
-    final updatedText =
-        String.fromCharCodes(_chips.map((_) => kObjectReplacementChar)) +
-            "${replaceText ? '' : _value.normalCharactersText}" +
-            putText;
+    final updatedText = '${replaceText ? '' : _value.text}' + putText;
     setState(() {
-      final textLength = updatedText.characters.length;
-      final replacedLength = _chips.length;
-      _value = _value.copyWith(
+      _value = TextEditingValue(
         text: updatedText,
-        selection: TextSelection.collapsed(offset: textLength),
-        composing: (Platform.isIOS || replacedLength == textLength)
+        selection: TextSelection.collapsed(offset: updatedText.length),
+        composing: (Platform.isIOS || updatedText.isEmpty)
             ? TextRange.empty
             : TextRange(
-                start: replacedLength,
-                end: textLength,
+                start: 0,
+                end: updatedText.length,
               ),
       );
     });
@@ -396,14 +357,10 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
   }
 
   @override
-  void updateFloatingCursor(RawFloatingCursorPoint point) {
-    // print(point);
-  }
+  void updateFloatingCursor(RawFloatingCursorPoint point) {}
 
   @override
-  void connectionClosed() {
-    //print('TextInputClient.connectionClosed()');
-  }
+  void connectionClosed() {}
 
   @override
   TextEditingValue get currentTextEditingValue => _value;
@@ -433,7 +390,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
             Flexible(
               flex: 1,
               child: Text(
-                _value.normalCharactersText,
+                _value.text,
                 maxLines: 1,
                 overflow: widget.textOverflow,
                 style: widget.textStyle ??
@@ -449,38 +406,63 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
       ),
     );
 
-    return NotificationListener<SizeChangedLayoutNotification>(
-      onNotification: (SizeChangedLayoutNotification val) {
-        WidgetsBinding.instance?.addPostFrameCallback((_) async {
-          _suggestionsBoxController.overlayEntry?.markNeedsBuild();
-        });
-        return true;
+    return RawKeyboardListener(
+      focusNode: _focusNode,
+      onKey: (event) {
+        if (event.runtimeType.toString() == 'RawKeyDownEvent' &&
+            event.logicalKey == LogicalKeyboardKey.backspace) {
+          if (_value.text.isNotEmpty) {
+            _updateTextInputState(
+              replaceText: true,
+              putText: _value.text.substring(0, _value.text.length - 1),
+            );
+          } else if (_chips.isNotEmpty) {
+            final removedChip = _chips.last;
+            _chips = Set.of(_chips.take(_chips.length - 1));
+            widget.onChanged(_chips.toList(growable: false));
+            var putText = '';
+            if (widget.allowChipEditing &&
+                _enteredTexts.containsKey(removedChip)) {
+              putText = _enteredTexts[removedChip]!;
+              _enteredTexts.remove(removedChip);
+            }
+            _updateTextInputState(replaceText: true, putText: putText);
+          }
+        }
       },
-      child: SizeChangedLayoutNotifier(
-        child: Column(
-          children: <Widget>[
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                requestKeyboard();
-              },
-              child: InputDecorator(
-                decoration: widget.decoration,
-                isFocused: _focusNode.hasFocus,
-                isEmpty: _value.text.isEmpty && _chips.isEmpty,
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 4.0,
-                  runSpacing: 4.0,
-                  children: chipsChildren,
+      child: NotificationListener<SizeChangedLayoutNotification>(
+        onNotification: (SizeChangedLayoutNotification val) {
+          WidgetsBinding.instance?.addPostFrameCallback((_) async {
+            _suggestionsBoxController.overlayEntry?.markNeedsBuild();
+          });
+          return true;
+        },
+        child: SizeChangedLayoutNotifier(
+          child: Column(
+            children: <Widget>[
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  requestKeyboard();
+                },
+                child: InputDecorator(
+                  decoration: widget.decoration,
+                  isFocused: _focusNode.hasFocus,
+                  isEmpty: _value.text.isEmpty && _chips.isEmpty,
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4.0,
+                    runSpacing: 4.0,
+                    children: chipsChildren,
+                  ),
                 ),
               ),
-            ),
-            CompositedTransformTarget(
-              link: _layerLink,
-              child: Container(),
-            ),
-          ],
+              CompositedTransformTarget(
+                link: _layerLink,
+                child: Container(),
+              ),
+            ],
+          ),
         ),
       ),
     );
