@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'suggestions_box_controller.dart';
 import 'text_cursor.dart';
 
+part 'chips_input_ios.dart';
+
 typedef ChipsInputSuggestions<T> = FutureOr<List<T>> Function(String query);
 typedef ChipSelected<T> = void Function(T data, bool selected);
 typedef ChipsBuilder<T> = Widget Function(
@@ -71,7 +73,7 @@ class ChipsInput<T> extends StatefulWidget {
   final TextCapitalization textCapitalization;
 
   @override
-  ChipsInputState<T> createState() => ChipsInputState<T>();
+  ChipsInputState<T> createState() => (Platform.isIOS) ? ChipsInputStateIos<T>() : ChipsInputState<T>();
 }
 
 class ChipsInputState<T> extends State<ChipsInput<T>>
