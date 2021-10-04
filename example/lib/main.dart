@@ -11,9 +11,12 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Chips Input',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
-        // brightness: Brightness.dark,
-      ),
+          primarySwatch: Colors.blue,
+          textSelectionTheme: TextSelectionThemeData(
+            cursorColor: Colors.red,
+          )
+          // brightness: Brightness.dark,
+          ),
       home: MyHomePage(),
     );
   }
@@ -28,6 +31,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final _chipKey = GlobalKey<ChipsInputState>();
+
   @override
   Widget build(BuildContext context) {
     const mockResults = <AppProfile>[
@@ -199,14 +203,14 @@ class _MyHomePageState extends State<MyHomePage> {
                   );
                 },
               ),*/
-              RaisedButton(
-                child: Text('Add Chip'),
+              ElevatedButton(
                 onPressed: () {
                   _chipKey.currentState.selectSuggestion(AppProfile(
                       'Gina',
                       'fred@flutter.io',
                       'https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png'));
                 },
+                child: Text('Add Chip'),
               ),
             ],
           ),
