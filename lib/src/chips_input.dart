@@ -73,10 +73,12 @@ class ChipsInput<T> extends StatefulWidget {
   final TextCapitalization textCapitalization;
 
   @override
-  ChipsInputState<T> createState() => (Platform.isIOS) ? ChipsInputStateIos<T>() : ChipsInputState<T>();
+  ChipsInputState<T> createState() =>
+      (Platform.isIOS) ? ChipsInputStateIos<T>() : ChipsInputState<T>();
 }
 
 class ChipsInputState<T> extends State<ChipsInput<T>>
+    with WidgetsBindingObserver
     implements TextInputClient {
   Set<T> _chips = <T>{};
   List<T>? _suggestions;
@@ -121,6 +123,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
     _focusNode.addListener(_handleFocusChanged);
     _nodeAttachment = _focusNode.attach(context);
 
+    WidgetsBinding.instance?.addObserver(this);
     WidgetsBinding.instance?.addPostFrameCallback((_) async {
       _initOverlayEntry();
       if (mounted && widget.autofocus) {
@@ -131,6 +134,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
 
   @override
   void dispose() {
+    WidgetsBinding.instance?.removeObserver(this);
     _closeInputConnectionIfNeeded();
 
     _focusNode.removeListener(_handleFocusChanged);
@@ -141,6 +145,13 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
     _suggestionsStreamController.close();
     _suggestionsBoxController.close();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (_focusNode.hasFocus) {
+      _scrollToVisible();
+    }
   }
 
   @override
@@ -277,13 +288,26 @@ class ChipsInputState<T> extends State<ChipsInput<T>>
     _scrollToVisible();
   }
 
-  void _scrollToVisible() {
-    Future.delayed(const Duration(milliseconds: 300), () {
-      WidgetsBinding.instance?.addPostFrameCallback((_) async {
-        final renderBox = context.findRenderObject() as RenderBox;
-        await Scrollable.of(context)?.position.ensureVisible(renderBox);
-      });
+  void _scrollToVisible() async {
+    await Future.any([
+      Future.delayed(const Duration(milliseconds: 600)),
+      _keyboardToggled()
+    ]);
+
+    WidgetsBinding.instance?.addPostFrameCallback((_) async {
+      final renderBox = context.findRenderObject() as RenderBox;
+      await Scrollable.of(context)?.position.ensureVisible(renderBox);
     });
+  }
+
+  Future<void> _keyboardToggled() async {
+    if (mounted) {
+      final bottom = WidgetsBinding.instance?.window.viewInsets.bottom;
+      while (WidgetsBinding.instance?.window.viewInsets.bottom == bottom) {
+        await Future.delayed(const Duration(milliseconds: 10));
+      }
+    }
+    return;
   }
 
   void _onSearchChanged(String value) async {
